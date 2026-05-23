@@ -1,0 +1,103 @@
+{
+  "name": "PAZ — World Bank PIB México",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      },
+      "id": "b2c3d4e5-0002-0002-0002-000000000001",
+      "name": "Diario 7AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.worldbank.org/v2/country/MX/indicator/NY.GDP.MKTP.CD",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "format", "value": "json" },
+            { "name": "per_page", "value": "5" },
+            { "name": "mrv", "value": "5" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "b2c3d4e5-0002-0002-0002-000000000002",
+      "name": "GET World Bank PIB MX",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer serie histórica del PIB México\n// World Bank devuelve [metadata, [datos]]\nconst raw = items[0].json;\nconst series = Array.isArray(raw) ? raw[1] : [];\n\nconst records = (series || []).map(r => ({\n  anio: r.date,\n  pib_usd: r.value,\n  pib_billones: r.value ? (r.value / 1e12).toFixed(3) + ' T USD' : 'N/D',\n  pais: r.country?.value || 'México',\n  indicador: 'NY.GDP.MKTP.CD'\n}));\n\nreturn records.map(r => ({ json: r }));"
+      },
+      "id": "b2c3d4e5-0002-0002-0002-000000000003",
+      "name": "Extraer Serie PIB",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            { "name": "agente", "stringValue": "PAZ" },
+            { "name": "fuente", "stringValue": "World Bank Open Data" },
+            { "name": "indicador_desc", "stringValue": "PIB a precios actuales (USD)" },
+            { "name": "pais", "stringValue": "={{ $json.pais }}" },
+            { "name": "anio", "stringValue": "={{ $json.anio }}" },
+            { "name": "valor_usd", "stringValue": "={{ $json.pib_usd }}" },
+            { "name": "valor_legible", "stringValue": "={{ $json.pib_billones }}" },
+            { "name": "timestamp_consulta", "stringValue": "={{ new Date().toISOString() }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-0002-0002-0002-000000000004",
+      "name": "Formatear PAZ Macro MX",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Diario 7AM": {
+      "main": [[ { "node": "GET World Bank PIB MX", "type": "main", "index": 0 } ]]
+    },
+    "GET World Bank PIB MX": {
+      "main": [[ { "node": "Extraer Serie PIB", "type": "main", "index": 0 } ]]
+    },
+    "Extraer Serie PIB": {
+      "main": [[ { "node": "Formatear PAZ Macro MX", "type": "main", "index": 0 } ]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "id": "paz-worldbank-002",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "description": "Agente PAZ: PIB México (últimos 5 años) vía World Bank Open Data API. Sin auth. Ejecuta diario 7AM. Conectar salida a Notion o base de datos de contexto macro.",
+    "agente": "PAZ",
+    "frecuencia": "diario 7:00 AM",
+    "api": "https://api.worldbank.org/v2/country/MX/indicator/NY.GDP.MKTP.CD",
+    "auth_requerida": false,
+    "apis_adicionales_sugeridas": [
+      "NY.GNP.PCAP.CD — GNI per cápita MX",
+      "FP.CPI.TOTL.ZG — Inflación MX",
+      "SL.UEM.TOTL.ZS — Desempleo MX"
+    ]
+  },
+  "tags": ["paz", "worldbank", "mexico", "macro", "zumaintelligence"]
+}

@@ -1,0 +1,103 @@
+{
+  "name": "ATLAS CHRONOS — CoinGecko BTC/ETH Prices",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "Cada 5 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.coingecko.com/api/v3/simple/price",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "ids", "value": "bitcoin,ethereum,usd-coin" },
+            { "name": "vs_currencies", "value": "usd,mxn" },
+            { "name": "include_24hr_change", "value": "true" },
+            { "name": "include_last_updated_at", "value": "true" }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000002",
+      "name": "GET CoinGecko Prices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            { "name": "btc_usd", "stringValue": "={{ $json.bitcoin.usd }}" },
+            { "name": "btc_mxn", "stringValue": "={{ $json.bitcoin.mxn }}" },
+            { "name": "btc_24h_change", "stringValue": "={{ $json.bitcoin.usd_24h_change }}" },
+            { "name": "eth_usd", "stringValue": "={{ $json.ethereum.usd }}" },
+            { "name": "eth_mxn", "stringValue": "={{ $json.ethereum.mxn }}" },
+            { "name": "eth_24h_change", "stringValue": "={{ $json.ethereum.usd_24h_change }}" },
+            { "name": "usdc_usd", "stringValue": "={{ $json['usd-coin'].usd }}" },
+            { "name": "fuente", "stringValue": "CoinGecko API v3" },
+            { "name": "agente", "stringValue": "ATLAS CHRONOS" },
+            { "name": "timestamp", "stringValue": "={{ new Date().toISOString() }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000003",
+      "name": "Formatear Precios ATLAS",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ATLAS CHRONOS — Procesamiento de precios para Notion / webhook destino\n// Consumido por: agente ATLAS en ZumaIntelligence\n// Acción: enviar a Notion database o webhook interno\n\nconst data = items[0].json;\n\nconst summary = {\n  timestamp: data.timestamp,\n  agente: 'ATLAS CHRONOS',\n  precios: {\n    BTC: { USD: data.btc_usd, MXN: data.btc_mxn, cambio_24h: `${parseFloat(data.btc_24h_change).toFixed(2)}%` },\n    ETH: { USD: data.eth_usd, MXN: data.eth_mxn, cambio_24h: `${parseFloat(data.eth_24h_change).toFixed(2)}%` },\n    USDC: { USD: data.usdc_usd }\n  },\n  alerta: Math.abs(parseFloat(data.btc_24h_change)) > 5 ? '⚠️ Movimiento >5% BTC' : null\n};\n\nconsole.log('[ATLAS]', JSON.stringify(summary, null, 2));\n\nreturn [{ json: summary }];"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000004",
+      "name": "ATLAS — Procesar y Alertar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Cada 5 minutos": {
+      "main": [[ { "node": "GET CoinGecko Prices", "type": "main", "index": 0 } ]]
+    },
+    "GET CoinGecko Prices": {
+      "main": [[ { "node": "Formatear Precios ATLAS", "type": "main", "index": 0 } ]]
+    },
+    "Formatear Precios ATLAS": {
+      "main": [[ { "node": "ATLAS — Procesar y Alertar", "type": "main", "index": 0 } ]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "id": "atlas-coingecko-001",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "description": "Agente ATLAS CHRONOS: precios BTC/ETH/USDC cada 5 minutos vía CoinGecko API (sin auth). Conectar nodo final a Notion database o webhook ATLAS.",
+    "agente": "ATLAS CHRONOS",
+    "frecuencia": "cada 5 minutos",
+    "api": "https://api.coingecko.com/api/v3/simple/price",
+    "auth_requerida": false
+  },
+  "tags": ["atlas", "crypto", "coingecko", "zumaintelligence"]
+}

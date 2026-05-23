@@ -1,0 +1,104 @@
+{
+  "name": "MSK BROKER — EconDB Inflación USA",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "d4e5f6a7-0004-0004-0004-000000000001",
+      "name": "Lunes 8AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.econdb.com/api/series/",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "ticker", "value": "CPIUS" },
+            { "name": "format", "value": "json" },
+            { "name": "last", "value": "12" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "d4e5f6a7-0004-0004-0004-000000000002",
+      "name": "GET EconDB CPI USA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Procesar CPI USA (Consumer Price Index) de EconDB\n// Usado por MSK Energy para contexto macro de costos de combustibles\nconst raw = items[0].json;\n\n// EconDB puede devolver resultados en formato array o con key 'results'\nconst series = raw?.results || raw?.data || (Array.isArray(raw) ? raw : [raw]);\n\nif (!series || series.length === 0) {\n  return [{ json: { error: 'Sin datos CPI', raw: raw, timestamp: new Date().toISOString() } }];\n}\n\nconst entry = series[0];\nconst dates = entry?.dates || [];\nconst values = entry?.values || [];\n\n// Tomar los últimos 3 puntos de datos\nconst recientes = dates.slice(-3).map((d, i) => ({\n  fecha: d,\n  cpi: values[dates.length - 3 + i]\n}));\n\nconst ultimo = recientes[recientes.length - 1];\nconst anterior = recientes[recientes.length - 2];\n\nconst cambio_mensual = ultimo && anterior && anterior.cpi\n  ? (((ultimo.cpi - anterior.cpi) / anterior.cpi) * 100).toFixed(3)\n  : null;\n\nconst resultado = {\n  agente: 'MSK BROKER',\n  fuente: 'EconDB — CPIUS',\n  indicador: 'CPI USA (Inflación al consumidor)',\n  ultima_fecha: ultimo?.fecha,\n  cpi_actual: ultimo?.cpi,\n  cambio_mensual_pct: cambio_mensual,\n  tendencia: cambio_mensual > 0 ? '⬆️ Inflación subiendo' : '⬇️ Inflación bajando',\n  impacto_combustible: cambio_mensual > 0.5 ? '⚠️ Presión al alza en costos MSK' : 'Estable',\n  historico_3m: recientes,\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('[MSK]', JSON.stringify(resultado, null, 2));\nreturn [{ json: resultado }];"
+      },
+      "id": "d4e5f6a7-0004-0004-0004-000000000003",
+      "name": "MSK — Procesar Inflación USA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            { "name": "agente", "stringValue": "MSK BROKER" },
+            { "name": "indicador", "stringValue": "CPI USA" },
+            { "name": "ultima_fecha", "stringValue": "={{ $json.ultima_fecha }}" },
+            { "name": "cpi_actual", "stringValue": "={{ $json.cpi_actual }}" },
+            { "name": "cambio_mensual_pct", "stringValue": "={{ $json.cambio_mensual_pct }}" },
+            { "name": "tendencia", "stringValue": "={{ $json.tendencia }}" },
+            { "name": "impacto_combustible", "stringValue": "={{ $json.impacto_combustible }}" },
+            { "name": "fuente", "stringValue": "EconDB CPIUS" },
+            { "name": "timestamp", "stringValue": "={{ $json.timestamp }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d4e5f6a7-0004-0004-0004-000000000004",
+      "name": "Formatear MSK Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Lunes 8AM": {
+      "main": [[ { "node": "GET EconDB CPI USA", "type": "main", "index": 0 } ]]
+    },
+    "GET EconDB CPI USA": {
+      "main": [[ { "node": "MSK — Procesar Inflación USA", "type": "main", "index": 0 } ]]
+    },
+    "MSK — Procesar Inflación USA": {
+      "main": [[ { "node": "Formatear MSK Output", "type": "main", "index": 0 } ]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "id": "msk-econdb-004",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "description": "Agente MSK BROKER: CPI USA (CPIUS) vía EconDB. Sin auth. Semanal lunes 8AM. Contexto macro de inflación para precios de combustibles MSK Energy.",
+    "agente": "MSK BROKER",
+    "frecuencia": "semanal — lunes 8:00 AM",
+    "api": "https://api.econdb.com/api/series/?ticker=CPIUS",
+    "auth_requerida": false,
+    "tickers_adicionales": [
+      "PPIUS — PPI (inflación productor USA)",
+      "WTIUSD — WTI Crude Oil price",
+      "CPIEMX — CPI México"
+    ]
+  },
+  "tags": ["msk", "inflation", "cpi", "econdb", "usa", "zumaintelligence"]
+}

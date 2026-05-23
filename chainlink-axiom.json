@@ -1,0 +1,130 @@
+{
+  "name": "AXIOM — CryptoCompare ETH Price Feed",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "e5f6a7b8-0005-0005-0005-000000000001",
+      "name": "Cada 15 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://min-api.cryptocompare.com/data/price",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "fsym", "value": "ETH" },
+            { "name": "tsyms", "value": "USD,MXN,BTC" }
+          ]
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "e5f6a7b8-0005-0005-0005-000000000002",
+      "name": "GET ETH Price CryptoCompare",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://min-api.cryptocompare.com/data/v2/histohour",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "fsym", "value": "ETH" },
+            { "name": "tsym", "value": "USD" },
+            { "name": "limit", "value": "4" }
+          ]
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "e5f6a7b8-0005-0005-0005-000000000003",
+      "name": "GET ETH Historial 4h",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "// AXIOM — ETH Price Feed para DeFi\n// Combina precio spot + historial 4h\nconst spot = items[0].json;   // precio actual\nconst hist = items[1].json;   // historial horario\n\nconst eth_usd = spot.USD;\nconst eth_mxn = spot.MXN;\nconst eth_btc = spot.BTC;\n\n// Calcular cambio de precio en 4h\nconst histData = hist?.Data?.Data || [];\nconst precio_hace_4h = histData.length > 0 ? histData[0].close : null;\nconst cambio_4h_pct = precio_hace_4h\n  ? (((eth_usd - precio_hace_4h) / precio_hace_4h) * 100).toFixed(3)\n  : null;\n\n// Calcular rango 4h\nconst precios_4h = histData.map(h => h.close).filter(Boolean);\nconst max_4h = precios_4h.length ? Math.max(...precios_4h).toFixed(2) : null;\nconst min_4h = precios_4h.length ? Math.min(...precios_4h).toFixed(2) : null;\n\nconst resultado = {\n  agente: 'AXIOM',\n  fuente: 'CryptoCompare API',\n  activo: 'ETH/USD',\n  precio_actual_usd: eth_usd,\n  precio_mxn: eth_mxn,\n  precio_btc: eth_btc,\n  cambio_4h_pct: cambio_4h_pct,\n  rango_4h: { max: max_4h, min: min_4h },\n  señal: Math.abs(parseFloat(cambio_4h_pct || 0)) > 3 ? `⚠️ Volatilidad ETH: ${cambio_4h_pct}%` : '✅ ETH estable',\n  gas_estimado_gwei: null,  // conectar a eth_gasstation si se necesita\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('[AXIOM]', JSON.stringify(resultado, null, 2));\nreturn [{ json: resultado }];"
+      },
+      "id": "e5f6a7b8-0005-0005-0005-000000000004",
+      "name": "AXIOM — Combinar y Analizar ETH",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 380]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            { "name": "agente", "stringValue": "AXIOM" },
+            { "name": "activo", "stringValue": "ETH/USD" },
+            { "name": "precio_usd", "stringValue": "={{ $json.precio_actual_usd }}" },
+            { "name": "precio_mxn", "stringValue": "={{ $json.precio_mxn }}" },
+            { "name": "precio_btc", "stringValue": "={{ $json.precio_btc }}" },
+            { "name": "cambio_4h_pct", "stringValue": "={{ $json.cambio_4h_pct }}" },
+            { "name": "rango_max_4h", "stringValue": "={{ $json.rango_4h.max }}" },
+            { "name": "rango_min_4h", "stringValue": "={{ $json.rango_4h.min }}" },
+            { "name": "senal", "stringValue": "={{ $json.señal }}" },
+            { "name": "fuente", "stringValue": "CryptoCompare" },
+            { "name": "timestamp", "stringValue": "={{ $json.timestamp }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e5f6a7b8-0005-0005-0005-000000000005",
+      "name": "Formatear AXIOM Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [920, 380]
+    }
+  ],
+  "connections": {
+    "Cada 15 minutos": {
+      "main": [
+        [ { "node": "GET ETH Price CryptoCompare", "type": "main", "index": 0 } ],
+        [ { "node": "GET ETH Historial 4h", "type": "main", "index": 0 } ]
+      ]
+    },
+    "GET ETH Price CryptoCompare": {
+      "main": [[ { "node": "AXIOM — Combinar y Analizar ETH", "type": "main", "index": 0 } ]]
+    },
+    "GET ETH Historial 4h": {
+      "main": [[ { "node": "AXIOM — Combinar y Analizar ETH", "type": "main", "index": 1 } ]]
+    },
+    "AXIOM — Combinar y Analizar ETH": {
+      "main": [[ { "node": "Formatear AXIOM Output", "type": "main", "index": 0 } ]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "id": "axiom-cryptocompare-005",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "description": "Agente AXIOM: ETH/USD precio spot + historial 4h vía CryptoCompare. Sin auth (tier gratuito). Cada 15 min. Dos ramas paralelas: precio spot + velas horarias, unificadas en code node.",
+    "agente": "AXIOM",
+    "frecuencia": "cada 15 minutos",
+    "apis": [
+      "https://min-api.cryptocompare.com/data/price",
+      "https://min-api.cryptocompare.com/data/v2/histohour"
+    ],
+    "auth_requerida": false,
+    "nota": "CryptoCompare free tier: 250K calls/month. Con 15min = ~2880 calls/day = ~86400/mes. Holgado."
+  },
+  "tags": ["axiom", "ethereum", "defi", "cryptocompare", "zumaintelligence"]
+}

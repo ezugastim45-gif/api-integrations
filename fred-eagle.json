@@ -1,0 +1,103 @@
+{
+  "name": "EAGLE — US Treasury Fiscal Data",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "c3d4e5f6-0003-0003-0003-000000000001",
+      "name": "Diario 8AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.fiscaldata.treasury.gov/services/api/v1/accounting/dts/dts_table_1",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "fields", "value": "record_date,account_type,open_today_bal,open_month_bal,open_fiscal_year_bal" },
+            { "name": "sort", "value": "-record_date" },
+            { "name": "limit", "value": "10" },
+            { "name": "format", "value": "json" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "c3d4e5f6-0003-0003-0003-000000000002",
+      "name": "GET Treasury DTS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Procesar Daily Treasury Statement — Table 1\n// Saldos de apertura diaria del Tesoro de EE.UU.\nconst raw = items[0].json;\nconst records = raw?.data || [];\n\nif (!records.length) {\n  return [{ json: { error: 'Sin datos del Tesoro', timestamp: new Date().toISOString() } }];\n}\n\n// Tomar el registro más reciente\nconst latest = records[0];\n\nconst resultado = {\n  agente: 'EAGLE',\n  fuente: 'US Treasury FiscalData API',\n  fecha: latest.record_date,\n  tipo_cuenta: latest.account_type,\n  saldo_hoy_millon_usd: parseFloat(latest.open_today_bal || 0),\n  saldo_mes_millon_usd: parseFloat(latest.open_month_bal || 0),\n  saldo_anio_fiscal_millon_usd: parseFloat(latest.open_fiscal_year_bal || 0),\n  saldo_hoy_legible: `$${(parseFloat(latest.open_today_bal || 0) / 1000).toFixed(1)}B USD`,\n  total_registros: records.length,\n  timestamp_consulta: new Date().toISOString()\n};\n\nconsole.log('[EAGLE]', JSON.stringify(resultado, null, 2));\nreturn [{ json: resultado }];"
+      },
+      "id": "c3d4e5f6-0003-0003-0003-000000000003",
+      "name": "EAGLE — Procesar Fiscal USA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            { "name": "agente", "stringValue": "EAGLE" },
+            { "name": "fecha_reporte", "stringValue": "={{ $json.fecha }}" },
+            { "name": "saldo_hoy_usd", "stringValue": "={{ $json.saldo_hoy_millon_usd }}" },
+            { "name": "saldo_legible", "stringValue": "={{ $json.saldo_hoy_legible }}" },
+            { "name": "saldo_mes", "stringValue": "={{ $json.saldo_mes_millon_usd }}" },
+            { "name": "saldo_anio_fiscal", "stringValue": "={{ $json.saldo_anio_fiscal_millon_usd }}" },
+            { "name": "fuente", "stringValue": "US Treasury FiscalData" },
+            { "name": "timestamp", "stringValue": "={{ $json.timestamp_consulta }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-0003-0003-0003-000000000004",
+      "name": "Formatear EAGLE Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Diario 8AM": {
+      "main": [[ { "node": "GET Treasury DTS", "type": "main", "index": 0 } ]]
+    },
+    "GET Treasury DTS": {
+      "main": [[ { "node": "EAGLE — Procesar Fiscal USA", "type": "main", "index": 0 } ]]
+    },
+    "EAGLE — Procesar Fiscal USA": {
+      "main": [[ { "node": "Formatear EAGLE Output", "type": "main", "index": 0 } ]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "id": "eagle-treasury-003",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "description": "Agente EAGLE: Daily Treasury Statement (DTS) Table 1 — saldos fiscales USA. Sin auth. Diario 8AM. Endpoint oficial del Tesoro americano.",
+    "agente": "EAGLE",
+    "frecuencia": "diario 8:00 AM",
+    "api": "https://api.fiscaldata.treasury.gov/services/api/v1/accounting/dts/dts_table_1",
+    "auth_requerida": false,
+    "apis_adicionales_sugeridas": [
+      "dts_table_3a — Deuda pública USA",
+      "dts_table_6 — Ingresos fiscales por categoría"
+    ]
+  },
+  "tags": ["eagle", "treasury", "usa", "fiscal", "zumaintelligence"]
+}
