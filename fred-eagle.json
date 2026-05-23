@@ -1,5 +1,5 @@
 {
-  "name": "EAGLE — US Treasury Fiscal Data",
+  "name": "EAGLE — FRED Deuda Federal USA",
   "nodes": [
     {
       "parameters": {
@@ -21,30 +21,35 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "https://api.fiscaldata.treasury.gov/services/api/v1/accounting/dts/dts_table_1",
+        "url": "https://fred.stlouisfed.org/graph/fredgraph.csv",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "fields", "value": "record_date,account_type,open_today_bal,open_month_bal,open_fiscal_year_bal" },
-            { "name": "sort", "value": "-record_date" },
-            { "name": "limit", "value": "10" },
-            { "name": "format", "value": "json" }
+            { "name": "id", "value": "GFDEBTN" },
+            { "name": "vintage_date", "value": "" }
           ]
         },
-        "options": { "timeout": 15000 }
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
       },
       "id": "c3d4e5f6-0003-0003-0003-000000000002",
-      "name": "GET Treasury DTS",
+      "name": "GET FRED Deuda Federal",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [460, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Procesar Daily Treasury Statement — Table 1\n// Saldos de apertura diaria del Tesoro de EE.UU.\nconst raw = items[0].json;\nconst records = raw?.data || [];\n\nif (!records.length) {\n  return [{ json: { error: 'Sin datos del Tesoro', timestamp: new Date().toISOString() } }];\n}\n\n// Tomar el registro más reciente\nconst latest = records[0];\n\nconst resultado = {\n  agente: 'EAGLE',\n  fuente: 'US Treasury FiscalData API',\n  fecha: latest.record_date,\n  tipo_cuenta: latest.account_type,\n  saldo_hoy_millon_usd: parseFloat(latest.open_today_bal || 0),\n  saldo_mes_millon_usd: parseFloat(latest.open_month_bal || 0),\n  saldo_anio_fiscal_millon_usd: parseFloat(latest.open_fiscal_year_bal || 0),\n  saldo_hoy_legible: `$${(parseFloat(latest.open_today_bal || 0) / 1000).toFixed(1)}B USD`,\n  total_registros: records.length,\n  timestamp_consulta: new Date().toISOString()\n};\n\nconsole.log('[EAGLE]', JSON.stringify(resultado, null, 2));\nreturn [{ json: resultado }];"
+        "jsCode": "// Procesar CSV de FRED — GFDEBTN: Total Public Debt Outstanding (millones USD)\n// Formato CSV: DATE,GFDEBTN\\n2024-01-01,34001234\\n...\nconst csv = items[0].json.data || items[0].json.body || '';\n\nif (!csv || typeof csv !== 'string') {\n  return [{ json: { error: 'Sin datos FRED', timestamp: new Date().toISOString() } }];\n}\n\nconst lines = csv.trim().split('\\n').filter(l => l && !l.startsWith('DATE'));\n\n// Tomar las últimas 3 observaciones (mensuales)\nconst recientes = lines.slice(-3).map(line => {\n  const [fecha, valor] = line.split(',');\n  return {\n    fecha: fecha?.trim(),\n    deuda_millones_usd: parseFloat(valor?.trim() || 0)\n  };\n});\n\nconst ultimo = recientes[recientes.length - 1];\nconst anterior = recientes[recientes.length - 2];\n\nconst cambio_mensual_mm = ultimo && anterior\n  ? ((ultimo.deuda_millones_usd - anterior.deuda_millones_usd) / 1000).toFixed(1)\n  : null;\n\nconst deuda_trillones = ultimo ? (ultimo.deuda_millones_usd / 1e6).toFixed(3) : null;\n\nconst resultado = {\n  agente: 'EAGLE',\n  fuente: 'FRED — GFDEBTN (Federal Reserve St. Louis)',\n  indicador: 'Total Public Debt Outstanding USA',\n  ultima_fecha: ultimo?.fecha,\n  deuda_millones_usd: ultimo?.deuda_millones_usd,\n  deuda_legible: `$${deuda_trillones}T USD`,\n  cambio_mensual_miles_mm: cambio_mensual_mm,\n  tendencia: cambio_mensual_mm > 0 ? '⬆️ Deuda aumentando' : '⬇️ Deuda disminuyendo',\n  alerta: ultimo?.deuda_millones_usd > 33_000_000 ? '⚠️ Deuda >$33T USD' : '✅ Dentro de rango',\n  historico_3m: recientes,\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('[EAGLE]', JSON.stringify(resultado, null, 2));\nreturn [{ json: resultado }];"
       },
       "id": "c3d4e5f6-0003-0003-0003-000000000003",
-      "name": "EAGLE — Procesar Fiscal USA",
+      "name": "EAGLE — Procesar Deuda Federal",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [680, 300]
@@ -55,13 +60,15 @@
         "fields": {
           "values": [
             { "name": "agente", "stringValue": "EAGLE" },
-            { "name": "fecha_reporte", "stringValue": "={{ $json.fecha }}" },
-            { "name": "saldo_hoy_usd", "stringValue": "={{ $json.saldo_hoy_millon_usd }}" },
-            { "name": "saldo_legible", "stringValue": "={{ $json.saldo_hoy_legible }}" },
-            { "name": "saldo_mes", "stringValue": "={{ $json.saldo_mes_millon_usd }}" },
-            { "name": "saldo_anio_fiscal", "stringValue": "={{ $json.saldo_anio_fiscal_millon_usd }}" },
-            { "name": "fuente", "stringValue": "US Treasury FiscalData" },
-            { "name": "timestamp", "stringValue": "={{ $json.timestamp_consulta }}" }
+            { "name": "indicador", "stringValue": "Total Public Debt USA (GFDEBTN)" },
+            { "name": "ultima_fecha", "stringValue": "={{ $json.ultima_fecha }}" },
+            { "name": "deuda_millones_usd", "stringValue": "={{ $json.deuda_millones_usd }}" },
+            { "name": "deuda_legible", "stringValue": "={{ $json.deuda_legible }}" },
+            { "name": "cambio_mensual_miles_mm", "stringValue": "={{ $json.cambio_mensual_miles_mm }}" },
+            { "name": "tendencia", "stringValue": "={{ $json.tendencia }}" },
+            { "name": "alerta", "stringValue": "={{ $json.alerta }}" },
+            { "name": "fuente", "stringValue": "FRED GFDEBTN" },
+            { "name": "timestamp", "stringValue": "={{ $json.timestamp }}" }
           ]
         },
         "options": {}
@@ -75,29 +82,31 @@
   ],
   "connections": {
     "Diario 8AM": {
-      "main": [[ { "node": "GET Treasury DTS", "type": "main", "index": 0 } ]]
+      "main": [[ { "node": "GET FRED Deuda Federal", "type": "main", "index": 0 } ]]
     },
-    "GET Treasury DTS": {
-      "main": [[ { "node": "EAGLE — Procesar Fiscal USA", "type": "main", "index": 0 } ]]
+    "GET FRED Deuda Federal": {
+      "main": [[ { "node": "EAGLE — Procesar Deuda Federal", "type": "main", "index": 0 } ]]
     },
-    "EAGLE — Procesar Fiscal USA": {
+    "EAGLE — Procesar Deuda Federal": {
       "main": [[ { "node": "Formatear EAGLE Output", "type": "main", "index": 0 } ]]
     }
   },
   "active": false,
   "settings": { "executionOrder": "v1" },
-  "id": "eagle-treasury-003",
+  "id": "eagle-fred-003",
   "meta": {
     "templateCredsSetupCompleted": true,
-    "description": "Agente EAGLE: Daily Treasury Statement (DTS) Table 1 — saldos fiscales USA. Sin auth. Diario 8AM. Endpoint oficial del Tesoro americano.",
+    "description": "Agente EAGLE: Deuda federal USA total (GFDEBTN) vía FRED CSV público. Sin auth. Diario 8AM. Reemplaza US Treasury FiscalData (retorna 404 desde NEXUS-1). Endpoint público FRED St. Louis Fed.",
     "agente": "EAGLE",
     "frecuencia": "diario 8:00 AM",
-    "api": "https://api.fiscaldata.treasury.gov/services/api/v1/accounting/dts/dts_table_1",
+    "api": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=GFDEBTN",
     "auth_requerida": false,
-    "apis_adicionales_sugeridas": [
-      "dts_table_3a — Deuda pública USA",
-      "dts_table_6 — Ingresos fiscales por categoría"
+    "nota": "US Treasury FiscalData API retorna 404 desde NEXUS-1 (posible geo-block). FRED CSV es alternativa pública confirmada funcional.",
+    "series_adicionales_fred": [
+      "WDTGDP — Deuda federal / PIB USA (%)",
+      "FYONGDA188S — Déficit federal anual",
+      "MTSDS133FMS — Surplus/déficit mensual del gobierno federal"
     ]
   },
-  "tags": ["eagle", "treasury", "usa", "fiscal", "zumaintelligence"]
+  "tags": ["eagle", "treasury", "debt", "fred", "usa", "zumaintelligence"]
 }

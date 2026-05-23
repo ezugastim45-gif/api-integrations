@@ -80,18 +80,20 @@ Schedule (7AM) → GET World Bank → Code (parse serie) → Set (format)
 
 ---
 
-### C) EAGLE — US Treasury FiscalData (`fred-eagle.json`)
+### C) EAGLE — FRED Deuda Federal USA (`fred-eagle.json`)
 **Agente:** EAGLE · **Frecuencia:** diario 8AM
 
 ```
-Schedule (8AM) → GET Treasury DTS → Code (parse) → Set (format)
+Schedule (8AM) → GET FRED CSV → Code (parse) → Set (format)
 ```
 
-- **Endpoint:** `https://api.fiscaldata.treasury.gov/services/api/v1/accounting/dts/dts_table_1`
-- **Datos:** Saldo apertura diaria, saldo mensual, saldo año fiscal (en millones USD)
-- **Tablas adicionales disponibles:**
-  - `dts_table_3a` — Deuda pública USA
-  - `dts_table_6` — Ingresos fiscales
+- **Endpoint:** `https://fred.stlouisfed.org/graph/fredgraph.csv?id=GFDEBTN`
+- **Datos:** Deuda federal total USA (millones USD), últimas 3 observaciones mensuales, cambio mensual, alerta si >$33T
+- **Nota:** US Treasury FiscalData (`fiscaldata.treasury.gov`) retorna 404 desde NEXUS-1 (posible geo-block). FRED CSV es alternativa pública sin auth.
+- **Series FRED adicionales:**
+  - `WDTGDP` — Deuda/PIB USA (%)
+  - `FYONGDA188S` — Déficit federal anual
+  - `MTSDS133FMS` — Surplus/déficit mensual
 
 ---
 
@@ -166,8 +168,8 @@ curl "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=us
 # World Bank
 curl "https://api.worldbank.org/v2/country/MX/indicator/NY.GDP.MKTP.CD?format=json&per_page=2" | python3 -m json.tool
 
-# US Treasury
-curl "https://api.fiscaldata.treasury.gov/services/api/v1/accounting/dts/dts_table_1?fields=record_date,open_today_bal&sort=-record_date&limit=2&format=json" | python3 -m json.tool
+# FRED — Deuda Federal USA (reemplaza US Treasury FiscalData que retorna 404)
+curl -s "https://fred.stlouisfed.org/graph/fredgraph.csv?id=GFDEBTN" | tail -5
 
 # EconDB
 curl "https://api.econdb.com/api/series/?ticker=CPIUS&format=json&last=3" | python3 -m json.tool
