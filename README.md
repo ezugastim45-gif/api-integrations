@@ -13,8 +13,8 @@ Workflows n8n para conectar APIs públicas gratuitas al ecosistema ZumaIntellige
 |---|---|---|---|---|
 | `coingecko-atlas.json` | ATLAS CHRONOS | CoinGecko v3 | cada 5 min | BTC/ETH/USDC en USD y MXN |
 | `worldbank-paz.json` | PAZ | World Bank Open Data | diario 7AM | PIB México (últimos 5 años) |
-| `fred-eagle.json` | EAGLE | US Treasury FiscalData | diario 8AM | Saldos Daily Treasury Statement |
-| `econdb-msk.json` | MSK BROKER | EconDB | semanal lunes 8AM | CPI USA (inflación al consumidor) |
+| `fred-eagle.json` | EAGLE | FRED (GFDEBTN) | diario 8AM | Deuda federal USA total (billones USD) |
+| `econdb-msk.json` | MSK BROKER | FRED (CPIAUCSL) | semanal lunes 8AM | CPI USA (inflación al consumidor) |
 | `chainlink-axiom.json` | AXIOM | CryptoCompare | cada 15 min | ETH/USD spot + historial 4h |
 
 ---
@@ -97,19 +97,20 @@ Schedule (8AM) → GET FRED CSV → Code (parse) → Set (format)
 
 ---
 
-### D) MSK BROKER — EconDB Inflación USA (`econdb-msk.json`)
+### D) MSK BROKER — FRED CPI USA (`econdb-msk.json`)
 **Agente:** MSK BROKER · **Frecuencia:** semanal lunes 8AM
 
 ```
-Schedule (lunes 8AM) → GET EconDB CPI → Code (analizar tendencia) → Set (format)
+Schedule (lunes 8AM) → GET FRED CSV → Code (analizar tendencia) → Set (format)
 ```
 
-- **Endpoint:** `https://api.econdb.com/api/series/?ticker=CPIUS`
-- **Datos:** CPI USA últimos 12 meses, cambio mensual %, impacto estimado en costos
-- **Tickers adicionales:**
-  - `PPIUS` — PPI (inflación productor)
-  - `WTIUSD` — Petróleo WTI
-  - `CPIEMX` — CPI México
+- **Endpoint:** `https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL`
+- **Datos:** CPI USA (All Urban Consumers, base 1982-84=100), últimas 3 observaciones mensuales, cambio %, impacto en costos MSK
+- **Nota:** EconDB requiere autenticación desde 2026. FRED CPIAUCSL es CPI oficial USA sin auth.
+- **Series FRED adicionales:**
+  - `PPIACO` — PPI (inflación productor)
+  - `DCOILWTICO` — WTI Crude Oil (diario)
+  - `CPIFABSL` — CPI Energy
 
 ---
 
@@ -171,8 +172,8 @@ curl "https://api.worldbank.org/v2/country/MX/indicator/NY.GDP.MKTP.CD?format=js
 # FRED — Deuda Federal USA (reemplaza US Treasury FiscalData que retorna 404)
 curl -s "https://fred.stlouisfed.org/graph/fredgraph.csv?id=GFDEBTN" | tail -5
 
-# EconDB
-curl "https://api.econdb.com/api/series/?ticker=CPIUS&format=json&last=3" | python3 -m json.tool
+# FRED — CPI USA (reemplaza EconDB que ahora requiere auth)
+curl -s "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL" | tail -5
 
 # CryptoCompare
 curl "https://min-api.cryptocompare.com/data/price?fsym=ETH&tsyms=USD,MXN" | python3 -m json.tool

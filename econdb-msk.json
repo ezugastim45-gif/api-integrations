@@ -1,5 +1,5 @@
 {
-  "name": "MSK BROKER — EconDB Inflación USA",
+  "name": "MSK BROKER — FRED CPI USA",
   "nodes": [
     {
       "parameters": {
@@ -21,26 +21,31 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "https://api.econdb.com/api/series/",
+        "url": "https://fred.stlouisfed.org/graph/fredgraph.csv",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "ticker", "value": "CPIUS" },
-            { "name": "format", "value": "json" },
-            { "name": "last", "value": "12" }
+            { "name": "id", "value": "CPIAUCSL" }
           ]
         },
-        "options": { "timeout": 15000 }
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
       },
       "id": "d4e5f6a7-0004-0004-0004-000000000002",
-      "name": "GET EconDB CPI USA",
+      "name": "GET FRED CPI USA",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [460, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Procesar CPI USA (Consumer Price Index) de EconDB\n// Usado por MSK Energy para contexto macro de costos de combustibles\nconst raw = items[0].json;\n\n// EconDB puede devolver resultados en formato array o con key 'results'\nconst series = raw?.results || raw?.data || (Array.isArray(raw) ? raw : [raw]);\n\nif (!series || series.length === 0) {\n  return [{ json: { error: 'Sin datos CPI', raw: raw, timestamp: new Date().toISOString() } }];\n}\n\nconst entry = series[0];\nconst dates = entry?.dates || [];\nconst values = entry?.values || [];\n\n// Tomar los últimos 3 puntos de datos\nconst recientes = dates.slice(-3).map((d, i) => ({\n  fecha: d,\n  cpi: values[dates.length - 3 + i]\n}));\n\nconst ultimo = recientes[recientes.length - 1];\nconst anterior = recientes[recientes.length - 2];\n\nconst cambio_mensual = ultimo && anterior && anterior.cpi\n  ? (((ultimo.cpi - anterior.cpi) / anterior.cpi) * 100).toFixed(3)\n  : null;\n\nconst resultado = {\n  agente: 'MSK BROKER',\n  fuente: 'EconDB — CPIUS',\n  indicador: 'CPI USA (Inflación al consumidor)',\n  ultima_fecha: ultimo?.fecha,\n  cpi_actual: ultimo?.cpi,\n  cambio_mensual_pct: cambio_mensual,\n  tendencia: cambio_mensual > 0 ? '⬆️ Inflación subiendo' : '⬇️ Inflación bajando',\n  impacto_combustible: cambio_mensual > 0.5 ? '⚠️ Presión al alza en costos MSK' : 'Estable',\n  historico_3m: recientes,\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('[MSK]', JSON.stringify(resultado, null, 2));\nreturn [{ json: resultado }];"
+        "jsCode": "// Procesar CPI USA desde FRED — CPIAUCSL (Consumer Price Index All Urban)\n// Formato CSV: DATE,CPIAUCSL\\n2026-04-01,332.407\\n...\nconst csv = items[0].json.data || items[0].json.body || '';\n\nif (!csv || typeof csv !== 'string') {\n  return [{ json: { error: 'Sin datos CPI', timestamp: new Date().toISOString() } }];\n}\n\nconst lines = csv.trim().split('\\n').filter(l => l && !l.startsWith('DATE'));\n\n// Últimas 3 observaciones mensuales\nconst recientes = lines.slice(-3).map(line => {\n  const [fecha, valor] = line.split(',');\n  return {\n    fecha: fecha?.trim(),\n    cpi: parseFloat(valor?.trim() || 0)\n  };\n});\n\nconst ultimo = recientes[recientes.length - 1];\nconst anterior = recientes[recientes.length - 2];\n\nconst cambio_mensual = ultimo && anterior && anterior.cpi\n  ? (((ultimo.cpi - anterior.cpi) / anterior.cpi) * 100).toFixed(3)\n  : null;\n\nconst resultado = {\n  agente: 'MSK BROKER',\n  fuente: 'FRED — CPIAUCSL (Federal Reserve St. Louis)',\n  indicador: 'CPI USA — All Urban Consumers (1982-84=100)',\n  ultima_fecha: ultimo?.fecha,\n  cpi_actual: ultimo?.cpi,\n  cambio_mensual_pct: cambio_mensual,\n  tendencia: parseFloat(cambio_mensual) > 0 ? '⬆️ Inflación subiendo' : '⬇️ Inflación bajando',\n  impacto_combustible: Math.abs(parseFloat(cambio_mensual || 0)) > 0.5 ? '⚠️ Presión al alza en costos MSK' : '✅ Estable',\n  historico_3m: recientes,\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('[MSK]', JSON.stringify(resultado, null, 2));\nreturn [{ json: resultado }];"
       },
       "id": "d4e5f6a7-0004-0004-0004-000000000003",
       "name": "MSK — Procesar Inflación USA",
@@ -54,13 +59,13 @@
         "fields": {
           "values": [
             { "name": "agente", "stringValue": "MSK BROKER" },
-            { "name": "indicador", "stringValue": "CPI USA" },
+            { "name": "indicador", "stringValue": "CPI USA CPIAUCSL" },
             { "name": "ultima_fecha", "stringValue": "={{ $json.ultima_fecha }}" },
             { "name": "cpi_actual", "stringValue": "={{ $json.cpi_actual }}" },
             { "name": "cambio_mensual_pct", "stringValue": "={{ $json.cambio_mensual_pct }}" },
             { "name": "tendencia", "stringValue": "={{ $json.tendencia }}" },
             { "name": "impacto_combustible", "stringValue": "={{ $json.impacto_combustible }}" },
-            { "name": "fuente", "stringValue": "EconDB CPIUS" },
+            { "name": "fuente", "stringValue": "FRED CPIAUCSL" },
             { "name": "timestamp", "stringValue": "={{ $json.timestamp }}" }
           ]
         },
@@ -75,9 +80,9 @@
   ],
   "connections": {
     "Lunes 8AM": {
-      "main": [[ { "node": "GET EconDB CPI USA", "type": "main", "index": 0 } ]]
+      "main": [[ { "node": "GET FRED CPI USA", "type": "main", "index": 0 } ]]
     },
-    "GET EconDB CPI USA": {
+    "GET FRED CPI USA": {
       "main": [[ { "node": "MSK — Procesar Inflación USA", "type": "main", "index": 0 } ]]
     },
     "MSK — Procesar Inflación USA": {
@@ -86,19 +91,21 @@
   },
   "active": false,
   "settings": { "executionOrder": "v1" },
-  "id": "msk-econdb-004",
+  "id": "msk-fred-cpi-004",
   "meta": {
     "templateCredsSetupCompleted": true,
-    "description": "Agente MSK BROKER: CPI USA (CPIUS) vía EconDB. Sin auth. Semanal lunes 8AM. Contexto macro de inflación para precios de combustibles MSK Energy.",
+    "description": "Agente MSK BROKER: CPI USA (CPIAUCSL) vía FRED CSV público. Sin auth. Semanal lunes 8AM. Reemplaza EconDB (requiere autenticación). Endpoint FRED St. Louis Fed.",
     "agente": "MSK BROKER",
     "frecuencia": "semanal — lunes 8:00 AM",
-    "api": "https://api.econdb.com/api/series/?ticker=CPIUS",
+    "api": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL",
     "auth_requerida": false,
-    "tickers_adicionales": [
-      "PPIUS — PPI (inflación productor USA)",
-      "WTIUSD — WTI Crude Oil price",
-      "CPIEMX — CPI México"
+    "nota": "EconDB API requiere autenticación desde 2026. FRED CPIAUCSL es CPI oficial (All Urban Consumers) sin auth.",
+    "series_fred_adicionales": [
+      "PPIACO — PPI (Producer Price Index)",
+      "DCOILWTICO — WTI Crude Oil Price (diario)",
+      "CPIUFDSL — CPI Food",
+      "CPIFABSL — CPI Energy"
     ]
   },
-  "tags": ["msk", "inflation", "cpi", "econdb", "usa", "zumaintelligence"]
+  "tags": ["msk", "inflation", "cpi", "fred", "usa", "zumaintelligence"]
 }
